@@ -13,11 +13,10 @@ export default function App() {
   const [hasInitialBalance, setHasInitialBalance] = useState(false)
 
   useEffect(() => {
-    const resetData = async () => {
-      await AsyncStorage.removeItem('initialBalance')
-    }
-
-    resetData()
+    // const resetData = async () => {
+    //   await AsyncStorage.removeItem('initialBalance')
+    // }
+    // resetData()
     const checkInitialBalance = async () => {
       const balance = await AsyncStorage.getItem('initialBalance')
       setHasInitialBalance(!!balance)
@@ -32,10 +31,10 @@ export default function App() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {!hasInitialBalance ? (
-          <Stack.Screen name="Welcome" component={WelcomeScreen} />
-        ) : (
+        {hasInitialBalance ? (
           <Stack.Screen name="Home" component={HomeScreen} />
+        ) : (
+          <Stack.Screen name="Welcome" component={WelcomeScreen} />
         )}
       </Stack.Navigator>
     </NavigationContainer>

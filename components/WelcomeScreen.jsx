@@ -6,6 +6,8 @@ import {
   Button,
   StyleSheet,
   ImageBackground,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Image } from 'react-native'
@@ -18,36 +20,38 @@ export default function WelcomeScreen({ navigation }) {
     await AsyncStorage.setItem('initialBalance', balance)
     navigation.replace('Home')
   }
+
   return (
-    <ImageBackground
-      source={require('../assets/nami.webp')}
-      style={styles.background}
-      resizeMode="cover"
-    >
-      <Image source={require('../assets/logo.png')} style={styles.logo} />
-      <View style={styles.overlay}>
-        <Text style={styles.title}>Benvenuto!</Text>
-        <Text style={styles.subtitle}>Quanti soldi hai adesso?</Text>
-        <TextInput
-          style={styles.input}
-          keyboardType="numeric"
-          placeholder="Es: 1000"
-          placeholderTextColor="#aaa"
-          value={balance}
-          onChangeText={setBalance}
-        />
-        <Button title="Inizia" onPress={handleStart} />
-      </View>
-    </ImageBackground>
+    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+      <ImageBackground
+        source={require('../assets/nami.webp')}
+        style={styles.background}
+        resizeMode="cover"
+      >
+        <Image style={styles.logo} source={require('../assets/logo.png')} />
+        <View style={styles.overlay}>
+          <Text style={styles.title}>Benvenuto!</Text>
+          <Text style={styles.subtitle}>Quanti soldi hai adesso?</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="numeric"
+            placeholder="Es: 1000"
+            placeholderTextColor="#aaa"
+            value={balance}
+            onChangeText={setBalance}
+          />
+          <Button title="Inizia" onPress={handleStart} />
+        </View>
+      </ImageBackground>
+    </TouchableWithoutFeedback>
   )
 }
-
 const styles = StyleSheet.create({
   logo: {
     width: '80%',
     height: undefined,
-    aspectRatio: 6.25,
-    marginBottom: 20,
+    aspectRatio: 3,
+    marginBottom: 50,
   },
   background: {
     flex: 1,
@@ -57,9 +61,10 @@ const styles = StyleSheet.create({
   overlay: {
     backgroundColor: 'rgba(255, 255, 255, 0.8)',
     padding: 20,
-    borderRadius: 10,
+    borderRadius: 30,
     width: '80%',
     alignItems: 'center',
+    marginBottom: 40,
   },
   title: {
     fontSize: 26,
