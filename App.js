@@ -1,20 +1,43 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react'
+import { NavigationContainer } from '@react-navigation/native'
+import { createNativeStackNavigator } from '@react-navigation/native-stack'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+
+import WelcomeScreen from './components/WelcomeScreen'
+import HomeScreen from './components/HomeScreen'
+
+const Stack = createNativeStackNavigator()
 
 export default function App() {
-  return (
-    <View style={styles.container}>
-      <Text>Open up App.js to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
-  );
-}
+  const [isLoading, setIsLoading] = useState(true)
+  const [hasInitialBalance, setHasInitialBalance] = useState(false)
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+  useEffect(() => {
+    const resetData = async () => {
+      await AsyncStorage.removeItem('initialBalance')
+    }
+
+    resetData()
+    const checkInitialBalance = async () => {
+      const balance = await AsyncStorage.getItem('initialBalance')
+      setHasInitialBalance(!!balance)
+      setIsLoading(false)
+    }
+
+    checkInitialBalance()
+  }, [])
+
+  if (isLoading) return null
+
+  return (
+    <NavigationContainer>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {!hasInitialBalance ? (
+          <Stack.Screen name="Welcome" component={WelcomeScreen} />
+        ) : (
+          <Stack.Screen name="Home" component={HomeScreen} />
+        )}
+      </Stack.Navigator>
+    </NavigationContainer>
+  )
+}
