@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-
 import WelcomeScreen from './components/WelcomeScreen'
 import HomeScreen from './components/HomeScreen'
 
@@ -14,7 +13,7 @@ export default function App() {
 
   useEffect(() => {
     // const resetData = async () => {
-    //   await AsyncStorage.removeItem('initialBalance')
+    // await AsyncStorage.removeItem('initialBalance')
     // }
     // resetData()
     const checkInitialBalance = async () => {

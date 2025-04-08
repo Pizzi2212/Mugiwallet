@@ -8,17 +8,35 @@ import {
   ImageBackground,
   TouchableWithoutFeedback,
   Keyboard,
+  ActivityIndicator,
 } from 'react-native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Image } from 'react-native'
 
 export default function WelcomeScreen({ navigation }) {
   const [balance, setBalance] = useState('')
+  const [isLoading, setIsLoading] = useState(false) // Stato di caricamento
 
   const handleStart = async () => {
-    if (!balance) return
-    await AsyncStorage.setItem('initialBalance', balance)
-    navigation.replace('Home')
+    if (balance === '') {
+      alert('Per favore inserisci un saldo valido')
+      return
+    }
+
+    setIsLoading(true) // Avvia il caricamento
+
+    try {
+      // Salva il saldo in AsyncStorage prima di navigare
+      await AsyncStorage.setItem('initialBalance', balance)
+
+      // Naviga alla schermata Home dopo aver salvato il saldo
+      navigation.replace('Home')
+    } catch (error) {
+      console.error('Errore nel salvataggio del saldo:', error)
+      alert('Si è verificato un errore. Riprova più tardi.')
+    } finally {
+      setIsLoading(false) // Termina il caricamento, anche in caso di errore
+    }
   }
 
   return (
@@ -40,12 +58,19 @@ export default function WelcomeScreen({ navigation }) {
             value={balance}
             onChangeText={setBalance}
           />
-          <Button title="Inizia" onPress={handleStart} />
+
+          {isLoading ? (
+            // Mostra un indicatore di caricamento mentre si salva il saldo
+            <ActivityIndicator size="large" color="#0000ff" />
+          ) : (
+            <Button title="Inizia" onPress={handleStart} />
+          )}
         </View>
       </ImageBackground>
     </TouchableWithoutFeedback>
   )
 }
+
 const styles = StyleSheet.create({
   logo: {
     width: '80%',
