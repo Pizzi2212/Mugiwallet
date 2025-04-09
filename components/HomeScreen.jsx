@@ -7,6 +7,7 @@ import {
   ScrollView,
   TextInput,
   Alert,
+  Modal,
 } from 'react-native'
 import { PieChart } from 'react-native-chart-kit'
 import { Dimensions } from 'react-native'
@@ -14,7 +15,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import dayjs from 'dayjs'
 import 'dayjs/locale/it'
 import Icon from 'react-native-vector-icons/FontAwesome'
-import { useNavigation } from '@react-navigation/native' // Importa useNavigation
 
 const screenWidth = Dimensions.get('window').width
 
@@ -31,10 +31,10 @@ const categories = [
   { key: 'Abbonamenti', color: '#9c27b0', emoji: '📺' },
   { key: 'Svago', color: '#00bcd4', emoji: '🎮' },
   { key: 'Altro', color: '#607d8b', emoji: '❓' },
+  { key: 'Extra', color: '#f44336', emoji: '➕' },
 ]
 
 export default function MonthlyExpenseScreen() {
-  const navigation = useNavigation() // Aggiungi useNavigation
   const [expenses, setExpenses] = useState([])
   const [income, setIncome] = useState([])
   const [filteredExpenses, setFilteredExpenses] = useState([])
@@ -43,7 +43,15 @@ export default function MonthlyExpenseScreen() {
   const [amount, setAmount] = useState('')
   const [incomeAmount, setIncomeAmount] = useState('')
   const [selectedCategory, setSelectedCategory] = useState(null)
-  const [balance, setBalance] = useState(0)
+  const [balances, setBalances] = useState([])
+  const [currentBalanceId, setCurrentBalanceId] = useState(null)
+  const [newBalanceName, setNewBalanceName] = useState('')
+  const [transferModalVisible, setTransferModalVisible] = useState(false)
+  const [transferAmount, setTransferAmount] = useState('')
+  const [fromBalanceId, setFromBalanceId] = useState(null)
+  const [toBalanceId, setToBalanceId] = useState(null)
+  const [extraModalVisible, setExtraModalVisible] = useState(false)
+  const [extraDescription, setExtraDescription] = useState('')
 
   useEffect(() => {
     dayjs.locale('it')
@@ -52,7 +60,7 @@ export default function MonthlyExpenseScreen() {
   useEffect(() => {
     loadExpenses()
     loadIncome()
-    loadBalance()
+    loadBalances()
   }, [])
 
   useEffect(() => {
@@ -76,9 +84,20 @@ export default function MonthlyExpenseScreen() {
     if (data) setIncome(JSON.parse(data))
   }
 
-  const loadBalance = async () => {
-    const data = await AsyncStorage.getItem('initialBalance')
-    if (data) setBalance(parseFloat(data))
+  const loadBalances = async () => {
+    const data = await AsyncStorage.getItem('balances')
+    if (data) {
+      const parsedData = JSON.parse(data)
+      setBalances(parsedData)
+      if (parsedData.length > 0 && !currentBalanceId) {
+        setCurrentBalanceId(parsedData[0].id)
+      }
+    } else {
+      const defaultBalance = [{ id: '1', name: 'Principale', amount: 0 }]
+      await AsyncStorage.setItem('balances', JSON.stringify(defaultBalance))
+      setBalances(defaultBalance)
+      setCurrentBalanceId('1')
+    }
   }
 
   const saveExpense = async () => {
@@ -89,14 +108,16 @@ export default function MonthlyExpenseScreen() {
     const newExpense = {
       amount: parseFloat(amount),
       category: selectedCategory,
+      description: selectedCategory === 'Extra' ? extraDescription : null,
       date: currentMonth.toISOString(),
+      balanceId: currentBalanceId,
     }
     const newExpenses = [...expenses, newExpense]
     setExpenses(newExpenses)
     await AsyncStorage.setItem('expenses', JSON.stringify(newExpenses))
     setAmount('')
     setSelectedCategory(null)
-    updateBalance(-newExpense.amount)
+    await updateBalance(currentBalanceId, -parseFloat(amount))
   }
 
   const saveIncome = async () => {
@@ -107,12 +128,13 @@ export default function MonthlyExpenseScreen() {
     const newIncome = {
       amount: parseFloat(incomeAmount),
       date: currentMonth.toISOString(),
+      balanceId: currentBalanceId,
     }
     const newIncomeArray = [...income, newIncome]
     setIncome(newIncomeArray)
     await AsyncStorage.setItem('income', JSON.stringify(newIncomeArray))
     setIncomeAmount('')
-    updateBalance(newIncome.amount)
+    await updateBalance(currentBalanceId, parseFloat(incomeAmount))
   }
 
   const handleAmountChange = (value) => {
@@ -125,29 +147,122 @@ export default function MonthlyExpenseScreen() {
     setIncomeAmount(formattedValue)
   }
 
-  const updateBalance = async (amount) => {
-    const newBalance = balance + amount
-    setBalance(newBalance)
-    await AsyncStorage.setItem('initialBalance', newBalance.toString())
+  const updateBalance = async (balanceId, amount) => {
+    const updatedBalances = balances.map((balance) => {
+      if (balance.id === balanceId) {
+        return {
+          ...balance,
+          amount: balance.amount + amount,
+        }
+      }
+      return balance
+    })
+    setBalances(updatedBalances)
+    await AsyncStorage.setItem('balances', JSON.stringify(updatedBalances))
+  }
+
+  const addNewBalance = async () => {
+    if (!newBalanceName.trim()) {
+      Alert.alert('Errore', 'Inserisci un nome per il nuovo saldo')
+      return
+    }
+    const newBalance = {
+      id: Date.now().toString(),
+      name: newBalanceName.trim(),
+      amount: 0,
+    }
+    const updatedBalances = [...balances, newBalance]
+    setBalances(updatedBalances)
+    await AsyncStorage.setItem('balances', JSON.stringify(updatedBalances))
+    setNewBalanceName('')
+  }
+  const transferFunds = async () => {
+    if (
+      !fromBalanceId ||
+      !toBalanceId ||
+      !transferAmount ||
+      fromBalanceId === toBalanceId
+    ) {
+      Alert.alert(
+        'Errore',
+        'Seleziona due saldi diversi e inserisci un importo valido'
+      )
+      return
+    }
+
+    const amount = parseFloat(transferAmount)
+    if (isNaN(amount) || amount <= 0) {
+      Alert.alert('Errore', 'Inserisci un importo valido e maggiore di zero')
+      return
+    }
+
+    const fromBalance = balances.find((b) => b.id === fromBalanceId)
+    if (!fromBalance || fromBalance.amount < amount) {
+      Alert.alert('Errore', 'Saldo insufficiente per il trasferimento')
+      return
+    }
+    const updatedBalances = balances.map((balance) => {
+      if (balance.id === fromBalanceId) {
+        return { ...balance, amount: balance.amount - amount }
+      }
+      if (balance.id === toBalanceId) {
+        return { ...balance, amount: balance.amount + amount }
+      }
+      return balance
+    })
+
+    setBalances(updatedBalances)
+    await AsyncStorage.setItem('balances', JSON.stringify(updatedBalances))
+
+    setTransferModalVisible(false)
+    setTransferAmount('')
+    setFromBalanceId(null)
+    setToBalanceId(null)
+
+    Alert.alert('Successo', 'Trasferimento effettuato con successo')
+  }
+
+  const getCurrentBalance = () => {
+    return balances.find((b) => b.id === currentBalanceId) || { amount: 0 }
   }
 
   const getTotalExpenses = () => {
-    return filteredExpenses.reduce((sum, e) => sum + parseFloat(e.amount), 0)
+    return filteredExpenses
+      .filter((e) => e.balanceId === currentBalanceId)
+      .reduce((sum, e) => sum + parseFloat(e.amount), 0)
   }
 
   const getTotalIncome = () => {
-    return filteredIncome.reduce((sum, e) => sum + parseFloat(e.amount), 0)
+    return filteredIncome
+      .filter((e) => e.balanceId === currentBalanceId)
+      .reduce((sum, e) => sum + parseFloat(e.amount), 0)
   }
 
   const getChartData = () => {
     const sums = {}
-    filteredExpenses.forEach((e) => {
-      sums[e.category] = (sums[e.category] || 0) + parseFloat(e.amount)
-    })
-    return Object.entries(sums).map(([category, value]) => {
-      const cat = categories.find((c) => c.key === category)
+    filteredExpenses
+      .filter((e) => e.balanceId === currentBalanceId)
+      .forEach((e) => {
+        const key =
+          e.category === 'Extra' && e.description ? e.description : e.category
+        sums[key] = (sums[key] || 0) + parseFloat(e.amount)
+      })
+
+    return Object.entries(sums).map(([key, value]) => {
+      const cat =
+        categories.find((c) => c.key === key) ||
+        categories.find((c) => c.key === 'Extra')
+      if (key.length > 12) {
+        return {
+          name: `${key.slice(0, 12)}...`,
+          amount: value,
+          color: cat?.color || '#ccc',
+          legendFontColor: '#fff',
+          legendFontSize: 14,
+        }
+      }
       return {
-        name: category,
+        name: key,
         amount: value,
         color: cat?.color || '#ccc',
         legendFontColor: '#fff',
@@ -164,17 +279,55 @@ export default function MonthlyExpenseScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.replace('WelcomeScreen')}>
-          <Icon name="arrow-left" size={25} color="white" />
-        </TouchableOpacity>
-      </View>
-
       <Text style={styles.title}>
         Spese - {currentMonth.format('MMMM YYYY')}
       </Text>
+
+      {/* Balance selector */}
+      <View style={styles.balanceSelector}>
+        {balances.map((balance) => (
+          <TouchableOpacity
+            key={balance.id}
+            style={[
+              styles.balanceButton,
+              currentBalanceId === balance.id && styles.selectedBalanceButton,
+            ]}
+            onPress={() => setCurrentBalanceId(balance.id)}
+          >
+            <Text style={styles.balanceButtonText}>{balance.name}</Text>
+            <Text style={styles.balanceButtonText}>
+              {balance.amount.toFixed(2)} €
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <View style={styles.balanceRow}>
-        <Text style={styles.balance}>Saldo: {balance.toFixed(2)} €</Text>
+        <Text style={styles.balance}>
+          Saldo attuale: {getCurrentBalance().amount.toFixed(2)} €
+        </Text>
+        <TouchableOpacity
+          onPress={() => setTransferModalVisible(true)}
+          style={styles.transferButton}
+        >
+          <Text style={styles.transferButtonText}>Trasferisci</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.addBalanceContainer}>
+        <TextInput
+          style={styles.input}
+          placeholder="Nuovo nome saldo"
+          placeholderTextColor="#ccc"
+          value={newBalanceName}
+          onChangeText={setNewBalanceName}
+        />
+        <TouchableOpacity
+          onPress={addNewBalance}
+          style={styles.addBalanceButton}
+        >
+          <Text style={styles.addBalanceButtonText}>Aggiungi Saldo</Text>
+        </TouchableOpacity>
       </View>
 
       <TextInput
@@ -214,7 +367,16 @@ export default function MonthlyExpenseScreen() {
         ))}
       </View>
 
-      <TouchableOpacity onPress={saveExpense} style={styles.saveBtn}>
+      <TouchableOpacity
+        onPress={() => {
+          if (selectedCategory === 'Extra') {
+            setExtraModalVisible(true)
+          } else {
+            saveExpense()
+          }
+        }}
+        style={styles.saveBtn}
+      >
         <Text style={styles.saveBtnText}>Aggiungi Spesa</Text>
       </TouchableOpacity>
 
@@ -268,7 +430,7 @@ export default function MonthlyExpenseScreen() {
         Totale Entrate: {getTotalIncome().toFixed(2)} €
       </Text>
       <Text style={styles.total}>
-        Differenza (Entrate - Spese): {balanceDifference().toFixed(2)} €
+        Soldi risparmiati: {balanceDifference().toFixed(2)} €
       </Text>
 
       {getChartData().map((item, index) => (
@@ -281,6 +443,120 @@ export default function MonthlyExpenseScreen() {
           <Text style={styles.amount}>{item.amount.toFixed(2)} €</Text>
         </View>
       ))}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={transferModalVisible}
+        onRequestClose={() => setTransferModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Trasferisci fondi</Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Importo"
+              placeholderTextColor="#ccc"
+              keyboardType="numeric"
+              value={transferAmount}
+              onChangeText={setTransferAmount}
+            />
+
+            <Text style={styles.modalSubtitle}>Da:</Text>
+            {balances.map((balance) => (
+              <TouchableOpacity
+                key={`from-${balance.id}`}
+                style={[
+                  styles.modalBalanceButton,
+                  fromBalanceId === balance.id &&
+                    styles.modalBalanceButtonSelected,
+                ]}
+                onPress={() => setFromBalanceId(balance.id)}
+              >
+                <Text style={styles.modalBalanceButtonText}>
+                  {balance.name} ({balance.amount.toFixed(2)} €)
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            <Text style={styles.modalSubtitle}>A:</Text>
+            {balances.map((balance) => (
+              <TouchableOpacity
+                key={`to-${balance.id}`}
+                style={[
+                  styles.modalBalanceButton,
+                  toBalanceId === balance.id &&
+                    styles.modalBalanceButtonSelected,
+                ]}
+                onPress={() => setToBalanceId(balance.id)}
+              >
+                <Text style={styles.modalBalanceButtonText}>
+                  {balance.name} ({balance.amount.toFixed(2)} €)
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setTransferModalVisible(false)}
+              >
+                <Text style={styles.modalButtonText}>Annulla</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, styles.confirmButton]}
+                onPress={transferFunds}
+              >
+                <Text style={styles.modalButtonText}>Conferma</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={extraModalVisible}
+        onRequestClose={() => setExtraModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Descrizione Spesa Extra</Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Aggiungi descrizione "
+              placeholderTextColor="#ccc"
+              value={extraDescription}
+              onChangeText={setExtraDescription}
+            />
+
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  setExtraModalVisible(false)
+                  setExtraDescription('')
+                }}
+              >
+                <Text style={styles.modalButtonText}>Annulla</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, styles.confirmButton]}
+                onPress={async () => {
+                  setExtraModalVisible(false)
+                  await saveExpense()
+                  setExtraDescription('')
+                }}
+              >
+                <Text style={styles.modalButtonText}>Conferma</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   )
 }
@@ -343,6 +619,53 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     flex: 1,
     textAlign: 'center',
+  },
+  balanceSelector: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    marginBottom: 15,
+  },
+  balanceButton: {
+    backgroundColor: '#2e3d25',
+    padding: 10,
+    margin: 5,
+    borderRadius: 8,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  selectedBalanceButton: {
+    backgroundColor: '#3f51b5',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  balanceButtonText: {
+    color: 'white',
+    fontSize: 14,
+  },
+  transferButton: {
+    backgroundColor: '#4caf50',
+    padding: 10,
+    borderRadius: 8,
+    marginLeft: 10,
+  },
+  transferButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  addBalanceContainer: {
+    marginBottom: 20,
+  },
+  addBalanceButton: {
+    backgroundColor: '#3f51b5',
+    padding: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  addBalanceButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
   },
   input: {
     backgroundColor: '#2e3d25',
@@ -412,5 +735,67 @@ const styles = StyleSheet.create({
   },
   pieChart: {
     marginBottom: 20,
+  },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+  },
+  modalContent: {
+    backgroundColor: '#1e2b18',
+    padding: 20,
+    borderRadius: 10,
+    width: '90%',
+  },
+  modalTitle: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  modalSubtitle: {
+    color: 'white',
+    fontSize: 16,
+    marginTop: 10,
+    marginBottom: 5,
+  },
+  modalBalanceButton: {
+    backgroundColor: '#2e3d25',
+    padding: 10,
+    borderRadius: 8,
+    marginVertical: 5,
+  },
+  modalBalanceButtonSelected: {
+    backgroundColor: '#3f51b5',
+    borderWidth: 1,
+    borderColor: 'white',
+  },
+  modalBalanceButtonText: {
+    color: 'white',
+    textAlign: 'center',
+  },
+  modalButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+  },
+  modalButton: {
+    padding: 12,
+    borderRadius: 8,
+    width: '48%',
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#f44336',
+  },
+  confirmButton: {
+    backgroundColor: '#4caf50',
+  },
+  modalButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
   },
 })
