@@ -52,6 +52,9 @@ export default function MonthlyExpenseScreen() {
   const [toBalanceId, setToBalanceId] = useState(null)
   const [extraModalVisible, setExtraModalVisible] = useState(false)
   const [extraDescription, setExtraDescription] = useState('')
+  const [editModalVisible, setEditModalVisible] = useState(false)
+  const [editedBalance, setEditedBalance] = useState(null)
+  const [editedName, setEditedName] = useState('')
 
   useEffect(() => {
     dayjs.locale('it')
@@ -277,43 +280,145 @@ export default function MonthlyExpenseScreen() {
     return totalIncome - totalExpenses
   }
 
+  const openEditModal = (balance) => {
+    setEditedBalance(balance)
+    setEditedName(balance.name)
+    setEditModalVisible(true)
+  }
+
+  const saveEditedBalance = async () => {
+    const updatedBalances = balances.map((b) =>
+      b.id === editedBalance.id ? { ...b, name: editedName.trim() } : b
+    )
+    setBalances(updatedBalances)
+    await AsyncStorage.setItem('balances', JSON.stringify(updatedBalances))
+    setEditModalVisible(false)
+  }
+
+  const deleteBalance = async (balanceId) => {
+    if (balances.length === 1) {
+      Alert.alert('Errore', 'Non puoi eliminare l’unico saldo esistente.')
+      return
+    }
+
+    const balanceToDelete = balances.find((b) => b.id === balanceId)
+
+    if (!balanceToDelete) return
+
+    const amount = balanceToDelete.amount || 0
+
+    if (amount > 0) {
+      Alert.alert(
+        'Trasferire i fondi?',
+        'Questo conto ha ancora soldi. Vuoi trasferirli in un altro conto prima di eliminarlo?',
+        [
+          { text: 'Annulla', style: 'cancel' },
+          {
+            text: 'Sì, trasferisci',
+            onPress: () => {
+              const otherBalances = balances.filter((b) => b.id !== balanceId)
+              // Esempio semplice con un prompt: puoi sostituirlo con un Picker o Modal
+              const otherNames = otherBalances.map((b) => b.name).join(', ')
+              Alert.prompt(
+                'Trasferisci a:',
+                `Scrivi il nome di uno dei seguenti conti: ${otherNames}`,
+                [
+                  {
+                    text: 'Annulla',
+                    style: 'cancel',
+                  },
+                  {
+                    text: 'Conferma',
+                    onPress: async (destName) => {
+                      const destBalance = otherBalances.find(
+                        (b) => b.name === destName
+                      )
+                      if (!destBalance) {
+                        Alert.alert('Errore', 'Conto non trovato.')
+                        return
+                      }
+
+                      // Trasferisci i fondi
+                      const updatedBalances = balances.map((b) => {
+                        if (b.id === balanceId) return { ...b, amount: 0 }
+                        if (b.id === destBalance.id)
+                          return {
+                            ...b,
+                            amount: b.amount + amount,
+                          }
+                        return b
+                      })
+
+                      // Procedi con l'eliminazione
+                      confirmDelete(balanceId, updatedBalances)
+                    },
+                  },
+                ],
+                'plain-text'
+              )
+            },
+          },
+          {
+            text: 'No, elimina senza trasferire',
+            style: 'destructive',
+            onPress: () => confirmDelete(balanceId),
+          },
+        ]
+      )
+    } else {
+      confirmDelete(balanceId)
+    }
+  }
+
+  const confirmDelete = async (balanceId, customBalances = null) => {
+    Alert.alert(
+      'Conferma eliminazione',
+      'Sei sicuro di voler eliminare questo saldo? I dati collegati andranno persi.',
+      [
+        { text: 'Annulla', style: 'cancel' },
+        {
+          text: 'Elimina',
+          style: 'destructive',
+          onPress: async () => {
+            const balancesToUse = customBalances || balances
+            const updatedBalances = balancesToUse.filter(
+              (b) => b.id !== balanceId
+            )
+            const updatedExpenses = expenses.filter(
+              (e) => e.balanceId !== balanceId
+            )
+            const updatedIncome = income.filter(
+              (i) => i.balanceId !== balanceId
+            )
+
+            setBalances(updatedBalances)
+            setExpenses(updatedExpenses)
+            setIncome(updatedIncome)
+
+            if (currentBalanceId === balanceId) {
+              setCurrentBalanceId(updatedBalances[0]?.id || null)
+            }
+
+            await AsyncStorage.setItem(
+              'balances',
+              JSON.stringify(updatedBalances)
+            )
+            await AsyncStorage.setItem(
+              'expenses',
+              JSON.stringify(updatedExpenses)
+            )
+            await AsyncStorage.setItem('income', JSON.stringify(updatedIncome))
+          },
+        },
+      ]
+    )
+  }
+
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.title}>
         Spese - {currentMonth.format('MMMM YYYY')}
       </Text>
-
-      {/* Balance selector */}
-      <View style={styles.balanceSelector}>
-        {balances.map((balance) => (
-          <TouchableOpacity
-            key={balance.id}
-            style={[
-              styles.balanceButton,
-              currentBalanceId === balance.id && styles.selectedBalanceButton,
-            ]}
-            onPress={() => setCurrentBalanceId(balance.id)}
-          >
-            <Text style={styles.balanceButtonText}>{balance.name}</Text>
-            <Text style={styles.balanceButtonText}>
-              {balance.amount.toFixed(2)} €
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <View style={styles.balanceRow}>
-        <Text style={styles.balance}>
-          Saldo attuale: {getCurrentBalance().amount.toFixed(2)} €
-        </Text>
-        <TouchableOpacity
-          onPress={() => setTransferModalVisible(true)}
-          style={styles.transferButton}
-        >
-          <Text style={styles.transferButtonText}>Trasferisci</Text>
-        </TouchableOpacity>
-      </View>
-
       <View style={styles.addBalanceContainer}>
         <TextInput
           style={styles.input}
@@ -327,6 +432,46 @@ export default function MonthlyExpenseScreen() {
           style={styles.addBalanceButton}
         >
           <Text style={styles.addBalanceButtonText}>Aggiungi Saldo</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.balanceSelector}>
+        {balances.map((balance) => (
+          <View key={balance.id} style={styles.balanceItem}>
+            <TouchableOpacity
+              style={[
+                styles.balanceButton,
+                currentBalanceId === balance.id && styles.selectedBalanceButton,
+              ]}
+              onPress={() => setCurrentBalanceId(balance.id)}
+            >
+              <Text style={styles.balanceButtonText}>{balance.name}</Text>
+              <Text style={styles.balanceButtonText}>
+                {balance.amount.toFixed(2)} €
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.balanceActions}>
+              <TouchableOpacity onPress={() => openEditModal(balance)}>
+                <Icon name="pencil" size={16} color="#ccc" />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => deleteBalance(balance.id)}>
+                <Icon name="trash" size={16} color="#f44336" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.balanceRow}>
+        <Text style={styles.balance}>
+          Saldo attuale: {getCurrentBalance().amount.toFixed(2)} €
+        </Text>
+        <TouchableOpacity
+          onPress={() => setTransferModalVisible(true)}
+          style={styles.transferButton}
+        >
+          <Text style={styles.transferButtonText}>Trasferisci</Text>
         </TouchableOpacity>
       </View>
 
@@ -552,6 +697,39 @@ export default function MonthlyExpenseScreen() {
                 }}
               >
                 <Text style={styles.modalButtonText}>Conferma</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={editModalVisible}
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Modifica nome saldo</Text>
+            <TextInput
+              style={styles.input}
+              value={editedName}
+              onChangeText={setEditedName}
+              placeholder="Nuovo nome"
+              placeholderTextColor="#ccc"
+            />
+            <View style={styles.modalButtonRow}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setEditModalVisible(false)}
+              >
+                <Text style={styles.modalButtonText}>Annulla</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.confirmButton]}
+                onPress={saveEditedBalance}
+              >
+                <Text style={styles.modalButtonText}>Salva</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -797,5 +975,12 @@ const styles = StyleSheet.create({
   modalButtonText: {
     color: 'white',
     fontWeight: 'bold',
+  },
+
+  balanceActions: {
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 })
