@@ -8,6 +8,7 @@ import {
   TextInput,
   Alert,
   Modal,
+  ImageBackground,
 } from 'react-native'
 import { PieChart } from 'react-native-chart-kit'
 import { Dimensions } from 'react-native'
@@ -56,39 +57,80 @@ export default function MonthlyExpenseScreen() {
   const [editedBalance, setEditedBalance] = useState(null)
   const [editedName, setEditedName] = useState('')
   const [initialAmount, setInitialAmount] = useState('')
-  const [isBalanceSet, setIsBalanceSet] = useState(false)
-  const [isFirstLaunch, setIsFirstLaunch] = useState(true)
+  const [showInitialBalanceScreen, setShowInitialBalanceScreen] =
+    useState(false)
 
   useEffect(() => {
     dayjs.locale('it')
+    loadInitialData()
   }, [])
 
-  useEffect(() => {
-    loadExpenses()
-    loadIncome()
-    loadBalances()
-  }, [])
+  // useEffect(() => {
+  //   const resetBalances = async () => {
+  //     const resetBalances = balances.map((balance) => ({
+  //       ...balance,
+  //       amount: 0,
+  //     }))
+  //     setBalances(resetBalances)
+  //     await AsyncStorage.setItem('balances', JSON.stringify(resetBalances))
+  //     setExpenses([])
+  //     setIncome([])
+  //     await AsyncStorage.setItem('expenses', JSON.stringify([]))
+  //     await AsyncStorage.setItem('income', JSON.stringify([]))
+  //     setAmount('')
+  //   }
 
-  useEffect(() => {
-    const checkFirstLaunch = async () => {
-      const hasLaunched = await AsyncStorage.getItem('hasLaunched')
-      const initialBalanceSet = await AsyncStorage.getItem('initialBalanceSet')
+  //   resetBalances()
+  // }, [])
 
-      if (hasLaunched && initialBalanceSet) {
-        setIsFirstLaunch(false)
-        setIsBalanceSet(true)
+  const loadInitialData = async () => {
+    const data = await AsyncStorage.getItem('balances')
+    if (data) {
+      const parsedData = JSON.parse(data)
+      setBalances(parsedData)
+      if (parsedData.length > 0) {
+        setCurrentBalanceId(parsedData[0].id)
+        if (parsedData.some((b) => b.amount > 0)) {
+          setShowInitialBalanceScreen(false)
+          setIsBalanceSet(true)
+        } else {
+          setShowInitialBalanceScreen(true)
+        }
+      } else {
+        setShowInitialBalanceScreen(true)
       }
+    } else {
+      setShowInitialBalanceScreen(true)
     }
 
-    checkFirstLaunch()
-  }, [])
+    loadExpenses()
+    loadIncome()
+  }
 
-  const handleAmountSubmit = async () => {
-    // Salva l'importo inserito
-    await AsyncStorage.setItem('amount', amount)
-    await AsyncStorage.setItem('hasLaunched', 'true')
+  const loadExpenses = async () => {
+    const data = await AsyncStorage.getItem('expenses')
+    if (data) setExpenses(JSON.parse(data))
+  }
 
-    setIsFirstLaunch(false)
+  const loadIncome = async () => {
+    const data = await AsyncStorage.getItem('income')
+    if (data) setIncome(JSON.parse(data))
+  }
+
+  const loadBalances = async () => {
+    const data = await AsyncStorage.getItem('balances')
+    if (data) {
+      const parsedData = JSON.parse(data)
+      setBalances(parsedData)
+      if (parsedData.length > 0 && !currentBalanceId) {
+        setCurrentBalanceId(parsedData[0].id)
+      }
+    } else {
+      const defaultBalance = [{ id: '1', name: 'Principale', amount: 0 }]
+      await AsyncStorage.setItem('balances', JSON.stringify(defaultBalance))
+      setBalances(defaultBalance)
+      setCurrentBalanceId('1')
+    }
   }
 
   useEffect(() => {
@@ -126,35 +168,9 @@ export default function MonthlyExpenseScreen() {
     await AsyncStorage.setItem('hasLaunched', 'true')
     await AsyncStorage.setItem('initialBalanceSet', 'true')
 
-    setIsFirstLaunch(false)
-    setIsBalanceSet(true)
+    setShowInitialBalanceScreen(false)
     setInitialAmount('')
-  }
-
-  const loadExpenses = async () => {
-    const data = await AsyncStorage.getItem('expenses')
-    if (data) setExpenses(JSON.parse(data))
-  }
-
-  const loadIncome = async () => {
-    const data = await AsyncStorage.getItem('income')
-    if (data) setIncome(JSON.parse(data))
-  }
-
-  const loadBalances = async () => {
-    const data = await AsyncStorage.getItem('balances')
-    if (data) {
-      const parsedData = JSON.parse(data)
-      setBalances(parsedData)
-      if (parsedData.length > 0 && !currentBalanceId) {
-        setCurrentBalanceId(parsedData[0].id)
-      }
-    } else {
-      const defaultBalance = [{ id: '1', name: 'Principale', amount: 0 }]
-      await AsyncStorage.setItem('balances', JSON.stringify(defaultBalance))
-      setBalances(defaultBalance)
-      setCurrentBalanceId('1')
-    }
+    setCurrentBalanceId('1')
   }
 
   const saveExpense = async () => {
@@ -233,6 +249,7 @@ export default function MonthlyExpenseScreen() {
     await AsyncStorage.setItem('balances', JSON.stringify(updatedBalances))
     setNewBalanceName('')
   }
+
   const transferFunds = async () => {
     if (
       !fromBalanceId ||
@@ -351,7 +368,7 @@ export default function MonthlyExpenseScreen() {
 
   const deleteBalance = async (balanceId) => {
     if (balances.length === 1) {
-      Alert.alert('Errore', 'Non puoi eliminare l’unico saldo esistente.')
+      Alert.alert('Errore', 'Non puoi eliminare l unico saldo esistente.')
       return
     }
 
@@ -371,7 +388,7 @@ export default function MonthlyExpenseScreen() {
             text: 'Sì, trasferisci',
             onPress: () => {
               const otherBalances = balances.filter((b) => b.id !== balanceId)
-              // Esempio semplice con un prompt: puoi sostituirlo con un Picker o Modal
+
               const otherNames = otherBalances.map((b) => b.name).join(', ')
               Alert.prompt(
                 'Trasferisci a:',
@@ -470,11 +487,7 @@ export default function MonthlyExpenseScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.title}>
-        Spese - {currentMonth.format('MMMM YYYY')}
-      </Text>
-
-      {!isBalanceSet && (
+      {showInitialBalanceScreen ? (
         <View style={styles.initialBalanceContainer}>
           <Text style={styles.initialBalanceText}>
             Attualmente quanti soldi hai?
@@ -490,11 +503,12 @@ export default function MonthlyExpenseScreen() {
             <Text style={styles.buttonText}>Salva Saldo</Text>
           </TouchableOpacity>
         </View>
-      )}
-
-      {isBalanceSet && (
+      ) : (
         <>
           <View style={styles.addBalanceContainer}>
+            <Text style={styles.title}>
+              Spese - {currentMonth.format('MMMM YYYY')}
+            </Text>
             <TextInput
               style={styles.input}
               placeholder="Nuovo nome saldo"
@@ -832,13 +846,16 @@ export default function MonthlyExpenseScreen() {
 
 const styles = StyleSheet.create({
   initialBalanceContainer: {
+    marginTop: '50%',
+    flex: 1,
     alignItems: 'center',
-    marginTop: 20,
+    justifyContent: 'center',
   },
   initialBalanceText: {
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 10,
+    color: '#fff',
   },
   input: {
     width: 200,
