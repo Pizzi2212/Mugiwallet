@@ -55,6 +55,8 @@ export default function MonthlyExpenseScreen() {
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [editedBalance, setEditedBalance] = useState(null)
   const [editedName, setEditedName] = useState('')
+  const [initialAmount, setInitialAmount] = useState('')
+  const [isBalanceSet, setIsBalanceSet] = useState(false)
 
   useEffect(() => {
     dayjs.locale('it')
@@ -64,6 +66,10 @@ export default function MonthlyExpenseScreen() {
     loadExpenses()
     loadIncome()
     loadBalances()
+  }, [])
+  useEffect(() => {
+    setIncome([])
+    setFilteredIncome([])
   }, [])
 
   useEffect(() => {
@@ -76,6 +82,31 @@ export default function MonthlyExpenseScreen() {
     setFilteredExpenses(filteredExpenses)
     setFilteredIncome(filteredIncome)
   }, [expenses, income, currentMonth])
+
+  const handleInitialAmountChange = (value) => {
+    const formattedValue = value.replace(',', '.')
+    setInitialAmount(formattedValue)
+  }
+
+  const saveInitialBalance = async () => {
+    if (!initialAmount) {
+      Alert.alert('Errore', 'Inserisci un importo per il saldo iniziale')
+      return
+    }
+
+    const newBalance = {
+      id: '1',
+      name: 'Principale',
+      amount: parseFloat(initialAmount),
+    }
+
+    const updatedBalances = [newBalance]
+    setBalances(updatedBalances)
+    await AsyncStorage.setItem('balances', JSON.stringify(updatedBalances))
+
+    setIsBalanceSet(true)
+    setInitialAmount('')
+  }
 
   const loadExpenses = async () => {
     const data = await AsyncStorage.getItem('expenses')
@@ -419,175 +450,210 @@ export default function MonthlyExpenseScreen() {
       <Text style={styles.title}>
         Spese - {currentMonth.format('MMMM YYYY')}
       </Text>
-      <View style={styles.addBalanceContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Nuovo nome saldo"
-          placeholderTextColor="#ccc"
-          value={newBalanceName}
-          onChangeText={setNewBalanceName}
-        />
-        <TouchableOpacity
-          onPress={addNewBalance}
-          style={styles.addBalanceButton}
-        >
-          <Text style={styles.addBalanceButtonText}>Aggiungi Saldo</Text>
-        </TouchableOpacity>
-      </View>
 
-      <View style={styles.balanceSelector}>
-        {balances.map((balance) => (
-          <View key={balance.id} style={styles.balanceItem}>
+      {/* Se non è stato impostato il saldo iniziale */}
+      {!isBalanceSet && (
+        <View style={styles.initialBalanceContainer}>
+          <Text style={styles.initialBalanceText}>
+            Attualmente quanti soldi hai?
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={initialAmount}
+            onChangeText={handleInitialAmountChange}
+            placeholder="Inserisci il saldo iniziale"
+            keyboardType="numeric"
+          />
+          <TouchableOpacity onPress={saveInitialBalance} style={styles.button}>
+            <Text style={styles.buttonText}>Salva Saldo</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Se il saldo iniziale è stato impostato */}
+      {isBalanceSet && (
+        <>
+          <View style={styles.addBalanceContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder="Nuovo nome saldo"
+              placeholderTextColor="#ccc"
+              value={newBalanceName}
+              onChangeText={setNewBalanceName}
+            />
             <TouchableOpacity
-              style={[
-                styles.balanceButton,
-                currentBalanceId === balance.id && styles.selectedBalanceButton,
-              ]}
-              onPress={() => setCurrentBalanceId(balance.id)}
+              onPress={addNewBalance}
+              style={styles.addBalanceButton}
             >
-              <Text style={styles.balanceButtonText}>{balance.name}</Text>
-              <Text style={styles.balanceButtonText}>
-                {balance.amount.toFixed(2)} €
-              </Text>
+              <Text style={styles.addBalanceButtonText}>Aggiungi Saldo</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.balanceSelector}>
+            {balances.map((balance) => (
+              <View key={balance.id} style={styles.balanceItem}>
+                <TouchableOpacity
+                  style={[
+                    styles.balanceButton,
+                    currentBalanceId === balance.id &&
+                      styles.selectedBalanceButton,
+                  ]}
+                  onPress={() => setCurrentBalanceId(balance.id)}
+                >
+                  <Text style={styles.balanceButtonText}>{balance.name}</Text>
+                  <Text style={styles.balanceButtonText}>
+                    {balance.amount.toFixed(2)} €
+                  </Text>
+                </TouchableOpacity>
+
+                <View style={styles.balanceActions}>
+                  <TouchableOpacity onPress={() => openEditModal(balance)}>
+                    <Icon name="pencil" size={16} color="#ccc" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => deleteBalance(balance.id)}>
+                    <Icon name="trash" size={16} color="#f44336" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.balanceRow}>
+            <Text style={styles.balance}>
+              Saldo attuale: {getCurrentBalance().amount.toFixed(2)} €
+            </Text>
+            <TouchableOpacity
+              onPress={() => setTransferModalVisible(true)}
+              style={styles.transferButton}
+            >
+              <Text style={styles.transferButtonText}>Trasferisci</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TextInput
+            style={styles.input}
+            placeholder="Aggiungi denaro"
+            placeholderTextColor="#ccc"
+            keyboardType="numeric"
+            value={incomeAmount}
+            onChangeText={handleIncomeAmountChange}
+          />
+          <TouchableOpacity onPress={saveIncome} style={styles.saveBtn}>
+            <Text style={styles.saveBtnText}>Aggiungi denaro</Text>
+          </TouchableOpacity>
+
+          <TextInput
+            style={styles.input}
+            placeholder="Importo spesa"
+            placeholderTextColor="#ccc"
+            keyboardType="numeric"
+            value={amount}
+            onChangeText={handleAmountChange}
+          />
+
+          <View style={styles.categoryRow}>
+            {categories.map((cat) => (
+              <TouchableOpacity
+                key={cat.key}
+                onPress={() => setSelectedCategory(cat.key)}
+                style={[
+                  styles.categoryBtn,
+                  selectedCategory === cat.key && {
+                    backgroundColor: cat.color,
+                  },
+                ]}
+              >
+                <Text style={styles.categoryText}>{cat.emoji}</Text>
+                <Text style={styles.categoryText2}>{cat.key}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <TouchableOpacity
+            onPress={() => {
+              if (selectedCategory === 'Extra') {
+                setExtraModalVisible(true)
+              } else {
+                saveExpense()
+              }
+            }}
+            style={styles.saveBtn}
+          >
+            <Text style={styles.saveBtnText}>Aggiungi Spesa</Text>
+          </TouchableOpacity>
+
+          <View style={styles.navRow}>
+            <TouchableOpacity
+              onPress={() => setCurrentMonth(currentMonth.subtract(1, 'month'))}
+            >
+              <Icon name="chevron-left" size={20} color="white" />
             </TouchableOpacity>
 
-            <View style={styles.balanceActions}>
-              <TouchableOpacity onPress={() => openEditModal(balance)}>
-                <Icon name="pencil" size={16} color="#ccc" />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => deleteBalance(balance.id)}>
-                <Icon name="trash" size={16} color="#f44336" />
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.monthText}>
+              {currentMonth.format('MMMM YYYY')}
+            </Text>
+
+            <TouchableOpacity
+              onPress={() =>
+                currentMonth.isBefore(dayjs().startOf('month')) &&
+                setCurrentMonth(currentMonth.add(1, 'month'))
+              }
+              disabled={currentMonth.isSame(dayjs().startOf('month'), 'month')}
+            >
+              <Icon
+                name="chevron-right"
+                size={20}
+                color={
+                  currentMonth.isSame(dayjs().startOf('month'), 'month')
+                    ? '#ccc'
+                    : 'white'
+                }
+              />
+            </TouchableOpacity>
           </View>
-        ))}
-      </View>
 
-      <View style={styles.balanceRow}>
-        <Text style={styles.balance}>
-          Saldo attuale: {getCurrentBalance().amount.toFixed(2)} €
-        </Text>
-        <TouchableOpacity
-          onPress={() => setTransferModalVisible(true)}
-          style={styles.transferButton}
-        >
-          <Text style={styles.transferButtonText}>Trasferisci</Text>
-        </TouchableOpacity>
-      </View>
-
-      <TextInput
-        style={styles.input}
-        placeholder="Aggiungi denaro"
-        placeholderTextColor="#ccc"
-        keyboardType="numeric"
-        value={incomeAmount}
-        onChangeText={handleIncomeAmountChange}
-      />
-      <TouchableOpacity onPress={saveIncome} style={styles.saveBtn}>
-        <Text style={styles.saveBtnText}>Aggiungi denaro</Text>
-      </TouchableOpacity>
-
-      <TextInput
-        style={styles.input}
-        placeholder="Importo spesa"
-        placeholderTextColor="#ccc"
-        keyboardType="numeric"
-        value={amount}
-        onChangeText={handleAmountChange}
-      />
-
-      <View style={styles.categoryRow}>
-        {categories.map((cat) => (
-          <TouchableOpacity
-            key={cat.key}
-            onPress={() => setSelectedCategory(cat.key)}
-            style={[
-              styles.categoryBtn,
-              selectedCategory === cat.key && { backgroundColor: cat.color },
-            ]}
-          >
-            <Text style={styles.categoryText}>{cat.emoji}</Text>
-            <Text style={styles.categoryText2}>{cat.key}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <TouchableOpacity
-        onPress={() => {
-          if (selectedCategory === 'Extra') {
-            setExtraModalVisible(true)
-          } else {
-            saveExpense()
-          }
-        }}
-        style={styles.saveBtn}
-      >
-        <Text style={styles.saveBtnText}>Aggiungi Spesa</Text>
-      </TouchableOpacity>
-
-      <View style={styles.navRow}>
-        <TouchableOpacity
-          onPress={() => setCurrentMonth(currentMonth.subtract(1, 'month'))}
-        >
-          <Icon name="chevron-left" size={20} color="white" />
-        </TouchableOpacity>
-
-        <Text style={styles.monthText}>{currentMonth.format('MMMM YYYY')}</Text>
-
-        <TouchableOpacity
-          onPress={() =>
-            currentMonth.isBefore(dayjs().startOf('month')) &&
-            setCurrentMonth(currentMonth.add(1, 'month'))
-          }
-          disabled={currentMonth.isSame(dayjs().startOf('month'), 'month')}
-        >
-          <Icon
-            name="chevron-right"
-            size={20}
-            color={
-              currentMonth.isSame(dayjs().startOf('month'), 'month')
-                ? '#ccc'
-                : 'white'
-            }
+          <PieChart
+            data={getChartData()}
+            width={screenWidth - 20}
+            height={220}
+            chartConfig={{
+              color: () => `white`,
+              labelColor: () => 'white',
+            }}
+            accessor="amount"
+            backgroundColor="transparent"
+            paddingLeft="10"
+            center={[10, 10]}
+            absolute
           />
-        </TouchableOpacity>
-      </View>
 
-      <PieChart
-        data={getChartData()}
-        width={screenWidth - 20}
-        height={220}
-        chartConfig={{
-          color: () => `white`,
-          labelColor: () => 'white',
-        }}
-        accessor="amount"
-        backgroundColor="transparent"
-        paddingLeft="10"
-        center={[10, 10]}
-        absolute
-      />
-
-      <Text style={styles.total}>
-        Totale Spese: {getTotalExpenses().toFixed(2)} €
-      </Text>
-      <Text style={styles.total}>
-        Totale Entrate: {getTotalIncome().toFixed(2)} €
-      </Text>
-      <Text style={styles.total}>
-        Soldi risparmiati: {balanceDifference().toFixed(2)} €
-      </Text>
-
-      {getChartData().map((item, index) => (
-        <View key={index} style={styles.item}>
-          <Text style={styles.label}>{item.name}</Text>
-          <Text style={styles.percent}>
-            {((item.amount / Math.max(1, getTotalExpenses())) * 100).toFixed(0)}
-            %
+          <Text style={styles.total}>
+            Totale Spese: {getTotalExpenses().toFixed(2)} €
           </Text>
-          <Text style={styles.amount}>{item.amount.toFixed(2)} €</Text>
-        </View>
-      ))}
+          <Text style={styles.total}>
+            Totale Entrate: {getTotalIncome().toFixed(2)} €
+          </Text>
+          <Text style={styles.total}>
+            Soldi risparmiati: {balanceDifference().toFixed(2)} €
+          </Text>
+
+          {getChartData().map((item, index) => (
+            <View key={index} style={styles.item}>
+              <Text style={styles.label}>{item.name}</Text>
+              <Text style={styles.percent}>
+                {(
+                  (item.amount / Math.max(1, getTotalExpenses())) *
+                  100
+                ).toFixed(0)}
+                %
+              </Text>
+              <Text style={styles.amount}>{item.amount.toFixed(2)} €</Text>
+            </View>
+          ))}
+        </>
+      )}
+
+      {/* Modal per il trasferimento fondi */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -659,6 +725,8 @@ export default function MonthlyExpenseScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Modal per aggiungere una spesa extra */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -671,7 +739,7 @@ export default function MonthlyExpenseScreen() {
 
             <TextInput
               style={styles.input}
-              placeholder="Aggiungi descrizione "
+              placeholder="Aggiungi descrizione"
               placeholderTextColor="#ccc"
               value={extraDescription}
               onChangeText={setExtraDescription}
@@ -702,6 +770,8 @@ export default function MonthlyExpenseScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Modal per modificare nome saldo */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -740,6 +810,38 @@ export default function MonthlyExpenseScreen() {
 }
 
 const styles = StyleSheet.create({
+  initialBalanceContainer: {
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  initialBalanceText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  input: {
+    width: 200,
+    height: 40,
+    borderColor: '#ccc',
+    borderWidth: 1,
+    marginBottom: 10,
+    paddingLeft: 8,
+  },
+  button: {
+    backgroundColor: '#4caf50',
+    padding: 10,
+    borderRadius: 5,
+  },
+  buttonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  balanceText: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginTop: 20,
+  },
+
   container: {
     flex: 1,
     backgroundColor: '#1e2b18',
