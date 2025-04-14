@@ -57,6 +57,7 @@ export default function MonthlyExpenseScreen() {
   const [editedName, setEditedName] = useState('')
   const [initialAmount, setInitialAmount] = useState('')
   const [isBalanceSet, setIsBalanceSet] = useState(false)
+  const [isFirstLaunch, setIsFirstLaunch] = useState(true)
 
   useEffect(() => {
     dayjs.locale('it')
@@ -67,10 +68,28 @@ export default function MonthlyExpenseScreen() {
     loadIncome()
     loadBalances()
   }, [])
+
   useEffect(() => {
-    setIncome([])
-    setFilteredIncome([])
+    const checkFirstLaunch = async () => {
+      const hasLaunched = await AsyncStorage.getItem('hasLaunched')
+      const initialBalanceSet = await AsyncStorage.getItem('initialBalanceSet')
+
+      if (hasLaunched && initialBalanceSet) {
+        setIsFirstLaunch(false)
+        setIsBalanceSet(true)
+      }
+    }
+
+    checkFirstLaunch()
   }, [])
+
+  const handleAmountSubmit = async () => {
+    // Salva l'importo inserito
+    await AsyncStorage.setItem('amount', amount)
+    await AsyncStorage.setItem('hasLaunched', 'true')
+
+    setIsFirstLaunch(false)
+  }
 
   useEffect(() => {
     const filteredExpenses = expenses.filter((e) =>
@@ -102,8 +121,12 @@ export default function MonthlyExpenseScreen() {
 
     const updatedBalances = [newBalance]
     setBalances(updatedBalances)
-    await AsyncStorage.setItem('balances', JSON.stringify(updatedBalances))
 
+    await AsyncStorage.setItem('balances', JSON.stringify(updatedBalances))
+    await AsyncStorage.setItem('hasLaunched', 'true')
+    await AsyncStorage.setItem('initialBalanceSet', 'true')
+
+    setIsFirstLaunch(false)
     setIsBalanceSet(true)
     setInitialAmount('')
   }
@@ -451,7 +474,6 @@ export default function MonthlyExpenseScreen() {
         Spese - {currentMonth.format('MMMM YYYY')}
       </Text>
 
-      {/* Se non è stato impostato il saldo iniziale */}
       {!isBalanceSet && (
         <View style={styles.initialBalanceContainer}>
           <Text style={styles.initialBalanceText}>
@@ -470,7 +492,6 @@ export default function MonthlyExpenseScreen() {
         </View>
       )}
 
-      {/* Se il saldo iniziale è stato impostato */}
       {isBalanceSet && (
         <>
           <View style={styles.addBalanceContainer}>
